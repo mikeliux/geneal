@@ -33,6 +33,7 @@ class GenAlgSolver:
         excluded_genes: Sequence = None,
         n_crossover_points: int = 1,
         random_state: int = None,
+        mutation_rate_adapt: bool = True
     ):
         """
         :param fitness_function: can either be a fitness function or
@@ -89,6 +90,7 @@ class GenAlgSolver:
         self.best_fitness_ = 0
         self.population_ = None
         self.fitness_ = None
+        self.mutation_rate_adapt = mutation_rate_adapt
 
     def check_input_base(
         self, fitness_function, selection_strategy, pop_size, excluded_genes
@@ -144,10 +146,18 @@ class GenAlgSolver:
 
         fitness = self.calculate_fitness(population)
 
-        fitness, population = self.sort_by_fitness(fitness, population)
-
+        fitness, population = self.sort_by_fitness(fitness, population)                
+        
         gen_interval = min(max(round(self.max_gen / 10), 1),2)
 
+        
+        
+        # Store fitness frequency for mutation rate adaption
+        if self.mutation_rate_adapt:
+            mut_rate_adapt_interval = max(round(self.max_gen / 10), 3)
+            self.bff_history = []
+            self.bff_history.append(self.calculate_best_fitness_freq(fitness))
+        
         gen_n = 0
         while True:
 
@@ -192,7 +202,13 @@ class GenAlgSolver:
             fitness = np.hstack((fitness[0], self.calculate_fitness(population[1:, :])))
 
             fitness, population = self.sort_by_fitness(fitness, population)
-
+            
+            if self.mutation_rate_adapt:
+                self.bff_history.append(self.calculate_best_fitness_freq(fitness))
+                if gen_n % mut_rate_adapt_interval==0:
+                    self.adapt_mutation_rate(fitness,
+                                              mut_rate_adapt_interval)
+                
             if gen_n >= self.max_gen:
                 break
 
@@ -473,3 +489,81 @@ class GenAlgSolver:
     def euclidean_diversity(x):
         (m,n) = x.shape
         return sum(np.linalg.norm(x[q]-x[k]) for k in range(x.shape[0]) for q in range(k) )/(m*(m-1)*n/2)
+
+    def adapt_mutation_rate(self,best_fitness_freq,
+                            mut_rate_adapt_interval:int,
+                            pmin = None,
+                            pmax:float = 0.4,
+                            ):
+        """
+        Adapt mutation rate based on fitness values distribution
+        Inspired by:
+            Adaptive Mutation Strategies for Evolutionary Algorithms
+        
+        https://www.dynardo.de/fileadmin/Material_Dynardo/WOST/Paper/wost2.0/AdaptiveMutation.pdf
+        
+
+        Parameters
+        ----------
+
+        pmin : float, optional
+            minimum mutation rate between 0 and 1. The default is 0.005.
+        pmax : float, optional
+            maximum mutation rate between 0 and 1.. The default is 0.7.
+
+        Returns
+        -------
+        None.
+
+        """
+        if pmin is None:
+            pmin = (1/self.n_genes)/10
+        # pdb.set_trace()
+        bff_avg = np.mean(self.bff_history[-mut_rate_adapt_interval::])
+        # sigma = 1/np.sqrt(12) # we use a uniform distribution for binary GenAlgSolver
+        # chi = 1.5  # linking coefficient between 1 and 2
+        # mu = 3*sigma*(bff_avg/chi)
+        
+        
+        bff_min = 0.1
+        bff_max = 0.3
+        bff_avg = max(min(bff_max,bff_avg),bff_min)
+        # Linear
+        # self.mutation_rate = pmin + (pmax-pmin)*bff_avg
+        
+        # Exponential
+        self.mutation_rate = pmin*((pmax/pmin)**((bff_avg-bff_min)/(bff_max-bff_min)))
+        print('new mutation rate: ',self.mutation_rate)
+        
+       # s = - np.log(pmax/pmin) / np.log(bff_max/bff_min)
+       # k = np.exp()
+        
+    def calculate_best_fitness_freq(self,fitness_sorted,
+                                    bandwidth_ratio:float = 0.05):
+        """
+        Calculate best fitness frequency (bff) for a given generation:            
+            bff = calculate_best_fitness_freq(calculate_best_fitness_freq)
+        
+        bff = (# of fitness values close to best fitness)/ pop_size
+               
+        Parameters
+        ----------
+        fitness_sorted : numpy 1-D array
+            Fitness values sorted in descending order.
+        bandwidth_ratio : float, optional
+            Half width Size of the histogram bin containing the bff . The default is 0.05.
+
+        Returns
+        -------
+        bff : float
+            best fitness frequency.
+
+        """
+        # best fitness value
+        bfv = fitness_sorted[0]
+
+        # best fitness frequency (exluding best value)
+        # pdb.set_trace()
+        return (np.sum(fitness_sorted>bfv*(1-bandwidth_ratio*np.sign(bfv)))-1)/self.pop_size
+        
+        
