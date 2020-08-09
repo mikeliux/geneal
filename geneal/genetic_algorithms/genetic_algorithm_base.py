@@ -11,9 +11,10 @@ from geneal.utils.exceptions import NoFitnessFunction, InvalidInput
 from geneal.utils.exceptions_messages import exception_messages
 from geneal.utils.helpers import get_elapsed_time
 from geneal.utils.logger import configure_logger
+from copy import deepcopy
+import pdb
 
-
-allowed_selection_strategies = {"roulette_wheel", "two_by_two", "random", "tournament"}
+allowed_selection_strategies = {"roulette_wheel", "two_by_two", "random", "tournament","custom"}
 
 
 class GenAlgSolver:
@@ -145,7 +146,7 @@ class GenAlgSolver:
 
         fitness, population = self.sort_by_fitness(fitness, population)
 
-        gen_interval = max(round(self.max_gen / 10), 1)
+        gen_interval = min(max(round(self.max_gen / 10), 1),2)
 
         gen_n = 0
         while True:
@@ -153,12 +154,18 @@ class GenAlgSolver:
             gen_n += 1
 
             if self.verbose and gen_n % gen_interval == 0:
-                logging.info(f"Iteration: {gen_n}")
+                logging.info(f"\nIteration: {gen_n}")
+                logging.info(f"Worst fitness: {fitness[-1]}")
                 logging.info(f"Best fitness: {fitness[0]}")
+                logging.info(f"Avg fitness: {mean_fitness[-1]}") 
+                diversity = self.euclidean_diversity(population)
+                logging.info(f"Diversity: {diversity}")                 
+                time_str = get_elapsed_time(start_time, datetime.datetime.now())
+                logging.info(f"elapsed time: {time_str}") 
 
             mean_fitness = np.append(mean_fitness, fitness.mean())
-            max_fitness = np.append(max_fitness, fitness[0])
-
+            max_fitness = np.append(max_fitness, fitness[-1])
+                
             ma, pa = self.select_parents(fitness)
 
             ix = np.arange(0, self.pop_size - self.pop_keep - 1, 2)
@@ -166,21 +173,22 @@ class GenAlgSolver:
             xp = np.array(
                 list(map(lambda _: self.get_crossover_points(), range(self.n_matings)))
             )
-
+            
+            population2 = deepcopy(population)
             for i in range(xp.shape[0]):
 
                 # create first offspring
-                population[-1 - ix[i], :] = self.create_offspring(
+                population2[-1 - ix[i], :] = self.create_offspring(
                     population[ma[i], :], population[pa[i], :], xp[i], "first"
                 )
 
                 # create second offspring
-                population[-1 - ix[i] - 1, :] = self.create_offspring(
+                population2[-1 - ix[i] - 1, :] = self.create_offspring(
                     population[pa[i], :], population[ma[i], :], xp[i], "second"
                 )
-
+            population = population2
             population = self.mutate_population(population, self.n_mutations)
-
+            
             fitness = np.hstack((fitness[0], self.calculate_fitness(population[1:, :])))
 
             fitness, population = self.sort_by_fitness(fitness, population)
@@ -247,8 +255,8 @@ class GenAlgSolver:
 
             range_max = int(self.n_matings * 2)
 
-            ma = np.arange(range_max)[::2]
-            pa = np.arange(range_max)[1::2]
+            ma = np.arange(range_max)[::2] # even
+            pa = np.arange(range_max)[1::2] # odd
 
             if ma.shape[0] > pa.shape[0]:
                 ma = ma[:-1]
@@ -268,6 +276,9 @@ class GenAlgSolver:
 
             ma = self.tournament_selection(fitness, range_max)
             pa = self.tournament_selection(fitness, range_max)
+        
+        elif self.selection_strategy == "custom":
+            pass
 
         return ma, pa
 
@@ -323,7 +334,7 @@ class GenAlgSolver:
 
         individuals_fitness = fitness[selected_individuals]
 
-        return selected_individuals[np.argmax(individuals_fitness)]
+        return  selected_individuals[np.argmax(individuals_fitness)]
 
     def get_selection_probabilities(self):
 
@@ -457,3 +468,8 @@ class GenAlgSolver:
         )
 
         return mutation_rows, mutation_cols
+    
+    @staticmethod
+    def euclidean_diversity(x):
+        (m,n) = x.shape
+        return sum(np.linalg.norm(x[q]-x[k]) for k in range(x.shape[0]) for q in range(k) )/(m*(m-1)*n/2)

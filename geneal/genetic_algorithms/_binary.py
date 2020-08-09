@@ -1,9 +1,10 @@
 from typing import Sequence
 
 import numpy as np
-
+import random
 from geneal.genetic_algorithms.genetic_algorithm_base import GenAlgSolver
 
+import pdb
 
 class BinaryGenAlgSolver(GenAlgSolver):
     def __init__(
@@ -62,8 +63,17 @@ class BinaryGenAlgSolver(GenAlgSolver):
         composed of 0's and 1's.
 
         :return: a numpy array with a randomized initialized population
-        """
-        return np.round(np.random.rand(self.pop_size, self.n_genes))
+        """          
+        bitArray = []         
+        for k in range(self.pop_size):            
+            number_of_ones = random.randint(0,self.n_genes)
+            rbits = [0]*(self.n_genes-number_of_ones) + [1]*number_of_ones            
+            random.shuffle(rbits)
+            bitArray.append(rbits)        
+        return np.array(bitArray)
+    
+        # return np.round(np.random.rand(self.pop_size, self.n_genes))
+    
 
     @staticmethod
     def create_offspring(first_parent, sec_parent, crossover_pt, _):
@@ -88,9 +98,12 @@ class BinaryGenAlgSolver(GenAlgSolver):
         :return: the mutated population
         """
 
-        mutation_rows, mutation_cols = super(
-            BinaryGenAlgSolver, self
-        ).mutate_population(population, n_mutations)
+        # mutation_rows, mutation_cols = super(
+        #     BinaryGenAlgSolver, self
+        # ).mutate_population(population, n_mutations)
+        
+        mutation_rows, mutation_cols = \
+            GenAlgSolver.mutate_population(self,population,n_mutations)
 
         population[mutation_rows, mutation_cols] = np.abs(population - 1)[
             mutation_rows, mutation_cols
