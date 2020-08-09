@@ -148,13 +148,11 @@ class GenAlgSolver:
 
         fitness, population = self.sort_by_fitness(fitness, population)                
         
-        gen_interval = min(max(round(self.max_gen / 10), 1),2)
-
-        
+        gen_interval = min(max(round(self.max_gen / 10), 1),2)        
         
         # Store fitness frequency for mutation rate adaption
         if self.mutation_rate_adapt:
-            mut_rate_adapt_interval = max(round(self.max_gen / 10), 3)
+            mut_rate_adapt_interval = min(max(round(self.max_gen / 10), 3),20)
             self.bff_history = []
             self.bff_history.append(self.calculate_best_fitness_freq(fitness))
         
@@ -255,7 +253,7 @@ class GenAlgSolver:
         :param fitness: the fitness values of the population at a given iteration
         :return: a tuple containing the selected 2 parents for each mating
         """
-
+        
         ma, pa = None, None
 
         if self.selection_strategy == "roulette_wheel":
@@ -287,7 +285,7 @@ class GenAlgSolver:
             )
 
         elif self.selection_strategy == "tournament":
-
+            
             range_max = int(self.n_matings * 2)
 
             ma = self.tournament_selection(fitness, range_max)
@@ -488,7 +486,9 @@ class GenAlgSolver:
     @staticmethod
     def euclidean_diversity(x):
         (m,n) = x.shape
-        return sum(np.linalg.norm(x[q]-x[k]) for k in range(x.shape[0]) for q in range(k) )/(m*(m-1)*n/2)
+        return sum(np.linalg.norm(x[q]-x[k]) for k in range(x.shape[0]) \
+                  for q in range(k) )/(np.sqrt(n)*m*(m-1)/2)
+
 
     def adapt_mutation_rate(self,best_fitness_freq,
                             mut_rate_adapt_interval:int,
@@ -517,7 +517,7 @@ class GenAlgSolver:
 
         """
         if pmin is None:
-            pmin = (1/self.n_genes)/10
+            pmin = 1/(self.n_genes*10)
         # pdb.set_trace()
         bff_avg = np.mean(self.bff_history[-mut_rate_adapt_interval::])
         # sigma = 1/np.sqrt(12) # we use a uniform distribution for binary GenAlgSolver
@@ -534,9 +534,7 @@ class GenAlgSolver:
         # Exponential
         self.mutation_rate = pmin*((pmax/pmin)**((bff_avg-bff_min)/(bff_max-bff_min)))
         print('new mutation rate: ',self.mutation_rate)
-        
-       # s = - np.log(pmax/pmin) / np.log(bff_max/bff_min)
-       # k = np.exp()
+
         
     def calculate_best_fitness_freq(self,fitness_sorted,
                                     bandwidth_ratio:float = 0.05):
@@ -560,8 +558,9 @@ class GenAlgSolver:
 
         """
         # best fitness value
-        bfv = fitness_sorted[0]
-
+        bfv = fitness_sorted[-1]
+        (a,b)=np.histogram(fitness_sorted)
+        print("Repeated best fit: ",a[0], " of ",self.pop_size)
         # best fitness frequency (exluding best value)
         # pdb.set_trace()
         return (np.sum(fitness_sorted>bfv*(1-bandwidth_ratio*np.sign(bfv)))-1)/self.pop_size
